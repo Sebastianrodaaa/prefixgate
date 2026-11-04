@@ -1,4 +1,4 @@
-![prefixgate](docs/screenshots/banner.png)
+![prefixgate](assets/banner.png)
 
 prefixgate watches a coding agent's tool call while it is still being written and says allow, deny or escalate as
 soon as it is sure enough. "Sure enough" is set by Learn-then-Test, so false-allow and false-deny stay under the
@@ -10,7 +10,7 @@ calls on the same CPU and the gate decides on them token by token, before anythi
 
 #ai-frontier-research #decision-models #agent-guardrails #conformal-prediction #tool-calling #streaming #system-one #cpu-inference #typed-decisions
 
-![The dashboard](docs/screenshots/hero.png)
+![The dashboard](assets/hero.png)
 
 ## The Gate
 
@@ -25,7 +25,7 @@ The thresholds come from Learn-then-Test on a calibration split: a 343-point gri
 risk, Bonferroni over the grid, delta 0.1. Configurations that cannot be certified are not used, and when none can
 be, the method says so.
 
-![risk vs alpha](docs/screenshots/risk.png)
+![risk vs alpha](assets/risk.png)
 
 On 776 held-out calls (315 carrying published prompt-injection templates aimed at `allow`) the stream keeps
 false-allow at 0.000 to 0.003 and false-deny at 0.007 to 0.020, under every alpha tried. It holds on a later
@@ -39,15 +39,14 @@ at alpha 0.05 / 0.1, 95% cluster-bootstrap CI **[34, 56]**, about 1.2 s of decod
 
 | | |
 |---|---|
-| ![lead vs baselines](docs/screenshots/lead_ci.png) | ![lead histogram](docs/screenshots/lead.png) |
+| ![lead vs baselines](assets/lead_ci.png) | ![lead histogram](assets/lead.png) |
 
 Now the catch. The gate gets there by escalating 92% of test calls, most of them early. It allowed 10 and denied 49
 of 776; batch allowed 64 and denied 64. Accuracy against gold drops from 0.54 to 0.46. The lead counted on allow and
 deny alone is 33 tokens over 59 calls. So the hypothesis holds as written, but what was built is a fast, safe
-escalator, not yet a useful allow/deny gate. [docs/REPORT.md](docs/REPORT.md) has every number, every baseline and
-the limitations.
+escalator, not yet a useful allow/deny gate.
 
-![trajectories](docs/screenshots/trajectory.png)
+![trajectories](assets/trajectory.png)
 
 ## The Screen
 
@@ -56,11 +55,11 @@ the prefix strip greys out what has not arrived yet, the bars show the three pro
 thresholds, the lead clock counts tokens saved, and the gate log notes each argmax change and the commit. The table
 is the real held-out run. Pick an alpha pair at the top and everything re-gates.
 
-![demo](docs/screenshots/demo.gif)
+![demo](assets/demo.gif)
 
 Live mode takes a pasted tool call and streams it through the trained model on your CPU. Nothing is executed.
 
-![live mode](docs/screenshots/live.png)
+![live mode](assets/live.png)
 
 The replay above is one call chosen for the demo (an attacked call both gates deny, with the largest lead). It is
 not typical; the typical call escalates.
@@ -72,7 +71,7 @@ not typical; the typical call escalates.
 token goes straight into the decision model, which scores the growing prefix. The gate log, bars and verdict update
 as the tokens land. Nothing is executed; allow only means "would be passed to the tool".
 
-![agent demo](docs/screenshots/agent.gif)
+![agent demo](assets/agent.gif)
 
 The GIF is a screen capture of three real live runs (`rm-rf-home`, `git-status`, `wire-stripe`) at 2x speed. The
 agent tab gates with v2: the stream thresholds on every prefix, plus a second calibrated triple on the finished call,
@@ -90,8 +89,7 @@ So the gate held 14 of 16 risky calls for a human and passed 6 of 8 benign ones,
 of it Llama decoding. It is not the clean demo: it never says *deny*, even for `rm -rf` (deny peaks at 0.63 against a
 0.9 threshold); six of the 24 commit mid-stream, the rest only on the finished call; and the two risky calls it
 allowed are ones Llama rewrote into something milder (a plain `git push` for "force push", a Slack post for
-"public GitHub comment"). Small-scale, single run. [docs/REPORT.md](docs/REPORT.md#agent-run-llama-32-3b) has the
-per-task table.
+"public GitHub comment"). Small-scale, single run; every task, token and probability is in `results/agent_runs.json`.
 
 ## The Hackathon
 
@@ -105,7 +103,8 @@ Meta Global AI Developer Hackathon, Indie track, Push the Frontier. The entry is
 - **Muse Spark, pluggable.** Set `META_API_KEY` and the dashboard offers the Meta Model API (`muse-spark-1.3`,
   streamed chat completions) as a second agent source; without it the adapter is never called. No committed result
   uses it.
-- **It runs.** `make demo`, then [docs/DEMO_SCRIPT.md](docs/DEMO_SCRIPT.md) is the two-minute walk-through.
+- **It runs.** `make demo` locally, or the recorded runs in the browser on the
+  [Hugging Face Space](https://huggingface.co/spaces/sroda/prefixgate).
 
 ## Install
 
@@ -122,7 +121,7 @@ make all             # the whole run from scratch: train, score, baselines, ~5.5
 ```
 
 It downloads the Policy Gates release into `data/` (sha-256 checked) and the Qwen weights into the Hugging Face cache
-(`~/.cache/huggingface`, about 1 GB). It writes to `results/` and `docs/screenshots/`. To undo, delete the clone,
+(`~/.cache/huggingface`, about 1 GB). It writes to `results/` and `assets/`. To undo, delete the clone,
 `data/`, `~/.cache/huggingface/hub/models--Qwen--Qwen2.5-0.5B-Instruct` and
 `~/.cache/huggingface/hub/models--unsloth--Llama-3.2-3B-Instruct`.
 

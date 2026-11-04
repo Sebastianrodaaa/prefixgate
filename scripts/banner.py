@@ -53,7 +53,7 @@ def main():
     for i, line in enumerate(("a calibrated gate that rules", "before the tool call is finished")):
         t = pixel_text(line, mono, 11, 2)
         out.paste(t.point(lambda v: 170 if v else 0), ((W - t.width) // 2, 250 + i * 34))
-    dst = ROOT / "docs" / "screenshots" / "banner.png"
+    dst = ROOT / "assets" / "banner.png"
     out.convert("RGB").save(dst)
     print(dst, out.size)
 

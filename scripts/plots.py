@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 from prefixgate.run import jload  # noqa: E402
 
-OUT = ROOT / "docs" / "screenshots"
+OUT = ROOT / "assets"
 plt.rcParams.update({"figure.facecolor": "black", "axes.facecolor": "black", "savefig.facecolor": "black",
                      "text.color": "#f2f2f2", "axes.labelcolor": "#a3a3a3", "axes.edgecolor": "#3a3a3a",
                      "xtick.color": "#a3a3a3", "ytick.color": "#a3a3a3", "font.family": "monospace", "font.size": 9,

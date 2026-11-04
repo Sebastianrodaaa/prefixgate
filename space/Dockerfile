@@ -8,7 +8,7 @@ RUN pip install --no-cache-dir torch==2.5.1 --index-url https://download.pytorch
 RUN useradd -m -u 1000 user
 USER user
 ENV HOME=/home/user HF_HOME=/home/user/.cache/huggingface HOST=0.0.0.0 OMP_NUM_THREADS=2 PREFIXGATE_AGENT_LIVE=0
-ARG REF=devin/prefixgate-hackathon
+ARG REF=main
 # re-clone whenever REF moves
 ADD https://github.com/Sebastianrodaaa/prefixgate/commits/${REF}.atom /tmp/ref.atom
 RUN git clone --depth 1 -b ${REF} https://github.com/Sebastianrodaaa/prefixgate /home/user/app
