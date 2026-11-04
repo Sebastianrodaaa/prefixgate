@@ -27,7 +27,7 @@ banner:
 	$(PY) scripts/banner.py
 app:
 	$(PY) app/server.py 8765
-agent:          ## Llama 3.2 3B writes 24 tool calls, the gate streams them; results/agent_runs.json, ~6 min
+agent:          ## Llama 3.2 3B writes 24 tool calls, the gate streams them; results/agent_runs.json, ~8 min
 	$(PY) -m prefixgate.agent
 demo:           ## the live agent dashboard on :8765 (first live run loads Llama + the gate, ~30 s)
 	@echo "open http://127.0.0.1:8765/?agent"

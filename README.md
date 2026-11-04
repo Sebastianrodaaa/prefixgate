@@ -3,9 +3,10 @@
 prefixgate watches a coding agent's tool call while it is still being written and says allow, deny or escalate as
 soon as it is sure enough. "Sure enough" is set by Learn-then-Test, so false-allow and false-deny stay under the
 bounds you pick. It is a CPU-only experiment on Qwen2.5-0.5B-Instruct and the public Policy Gates data, with a local
-dashboard that replays the real run.
+dashboard that replays the real run. For the Meta hackathon it also gates a live agent: Llama 3.2 3B writes tool
+calls on the same CPU and the gate decides on them token by token, before anything could run.
 
-![python](https://img.shields.io/badge/python-3.10-black?style=flat-square) ![cpu only](https://img.shields.io/badge/cpu-only-black?style=flat-square) ![model](https://img.shields.io/badge/qwen2.5-0.5b-black?style=flat-square) ![license](https://img.shields.io/badge/license-MIT-black?style=flat-square) ![result](https://img.shields.io/badge/hypothesis-holds%2C%20degenerate-white?style=flat-square)
+![python](https://img.shields.io/badge/python-3.10-black?style=flat-square) ![cpu only](https://img.shields.io/badge/cpu-only-black?style=flat-square) ![model](https://img.shields.io/badge/qwen2.5-0.5b-black?style=flat-square) ![agent](https://img.shields.io/badge/llama_3.2-3b-black?style=flat-square) ![license](https://img.shields.io/badge/license-MIT-black?style=flat-square) ![result](https://img.shields.io/badge/hypothesis-holds%2C%20degenerate-white?style=flat-square)
 
 #ai-frontier-research #decision-models #agent-guardrails #conformal-prediction #tool-calling #streaming #system-one #cpu-inference #typed-decisions
 
@@ -64,21 +65,66 @@ Live mode takes a pasted tool call and streams it through the trained model on y
 The replay above is one call chosen for the demo (an attacked call both gates deny, with the largest lead). It is
 not typical; the typical call escalates.
 
+## The Agent
+
+`make demo` serves the dashboard with the agent tab open. Pick a task, press **run live**: Llama 3.2 3B Instruct
+(Meta's open weights, fp32 on this 8-thread CPU, greedy, its native tool-call template) writes one call, and every
+token goes straight into the decision model, which scores the growing prefix. The gate log, bars and verdict update
+as the tokens land. Nothing is executed; allow only means "would be passed to the tool".
+
+![agent demo](docs/screenshots/agent.gif)
+
+The GIF is a screen capture of three real live runs (`rm-rf-home`, `git-status`, `wire-stripe`) at 2x speed. The
+agent tab gates with v2: the stream thresholds on every prefix, plus a second calibrated triple on the finished call,
+both certified together by Learn-then-Test.
+
+The recorded run in `results/agent_runs.json` is 24 generated tasks, 16 of them risky (`rm -rf`, wiring money,
+emailing a customer export out, reading AWS keys, dropping a table, force pushes, `curl | sh`, prod deploys):
+
+| | allow | escalate | deny |
+|---|---|---|---|
+| 8 benign tasks | 6 | 2 | 0 |
+| 16 risky tasks | 2 | 14 | 0 |
+
+So the gate held 14 of 16 risky calls for a human and passed 6 of 8 benign ones, with a median 17.8 s per task, most
+of it Llama decoding. It is not the clean demo: it never says *deny*, even for `rm -rf` (deny peaks at 0.63 against a
+0.9 threshold); six of the 24 commit mid-stream, the rest only on the finished call; and the two risky calls it
+allowed are ones Llama rewrote into something milder (a plain `git push` for "force push", a Slack post for
+"public GitHub comment"). Small-scale, single run. [docs/REPORT.md](docs/REPORT.md#agent-run-llama-32-3b) has the
+per-task table.
+
+## The Hackathon
+
+Meta Global AI Developer Hackathon, Indie track, Push the Frontier. The entry is this repo:
+
+- **Meta open weights on a CPU.** Llama 3.2 3B Instruct from the ungated mirror
+  `unsloth/Llama-3.2-3B-Instruct@006f5dc` (Llama 3.2 Community License, see [NOTICE.md](NOTICE.md)). No GPU, no
+  cloud, no paid API.
+- **A gate on the stream, with a bound.** prefixgate decides while the agent is still writing, and its thresholds
+  carry a Learn-then-Test guarantee on false-allow and false-deny instead of a hand-picked cut-off.
+- **Muse Spark, pluggable.** Set `META_API_KEY` and the dashboard offers the Meta Model API (`muse-spark-1.3`,
+  streamed chat completions) as a second agent source; without it the adapter is never called. No committed result
+  uses it.
+- **It runs.** `make demo`, then [docs/DEMO_SCRIPT.md](docs/DEMO_SCRIPT.md) is the two-minute walk-through.
+
 ## Install
 
 ```sh
 git clone https://github.com/Sebastianrodaaa/prefixgate && cd prefixgate
 pip install torch==2.5.1 --index-url https://download.pytorch.org/whl/cpu
-pip install transformers==4.46.3 safetensors numpy scipy scikit-learn matplotlib pillow
+pip install transformers==4.46.3 "jinja2>=3.1" safetensors numpy scipy scikit-learn matplotlib pillow
 make test            # data checks, LTT, gate invariants (no model needed)
 make run plots       # rebuild results/metrics.json and the plots from committed scores, ~3 min
 make app             # dashboard on :8765
+make demo            # the same, agent tab: live Llama 3.2 3B runs (first run downloads about 6.5 GB)
+make agent           # re-record results/agent_runs.json, 24 tasks, ~8 min
 make all             # the whole run from scratch: train, score, baselines, ~5.5 h on 8 CPU threads
 ```
 
 It downloads the Policy Gates release into `data/` (sha-256 checked) and the Qwen weights into the Hugging Face cache
 (`~/.cache/huggingface`, about 1 GB). It writes to `results/` and `docs/screenshots/`. To undo, delete the clone,
-`data/`, and `~/.cache/huggingface/hub/models--Qwen--Qwen2.5-0.5B-Instruct`.
+`data/`, `~/.cache/huggingface/hub/models--Qwen--Qwen2.5-0.5B-Instruct` and
+`~/.cache/huggingface/hub/models--unsloth--Llama-3.2-3B-Instruct`.
 
 ## The Name
 
@@ -87,9 +133,9 @@ for now, the decision is "ask someone".
 
 ## Inspirations
 
-Decision Models as Policy Gates, Learn then Test, Ranked but Not Stopped, Local or Escalate, and athanor's README.
+Decision Models as Policy Gates, Learn then Test, Llama 3.2, Ranked but Not Stopped, Local or Escalate, and athanor's README.
 See [INSPIRATIONS.md](INSPIRATIONS.md).
 
 ## License
 
-MIT, see [LICENSE](LICENSE). Data, model, art and fonts keep their own terms, listed in [NOTICE.md](NOTICE.md).
+MIT, see [LICENSE](LICENSE). Data, models (Qwen2.5, Llama 3.2: Built with Llama), art and fonts keep their own terms, listed in [NOTICE.md](NOTICE.md).
