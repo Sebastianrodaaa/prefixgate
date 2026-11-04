@@ -3,7 +3,7 @@
 The model is causal, so one forward pass over [prompt + call] gives the state after every prefix length t;
 the head turns each state into P(allow, deny, escalate | prefix). Everything here runs on CPU.
 """
-import gzip, json, platform, random, sys, time
+import gzip, json, os, platform, random, sys, time
 import torch, torch.nn as nn, torch.nn.functional as F
 from safetensors.torch import load_file, save_file
 from transformers import AutoModelForCausalLM, AutoTokenizer, DynamicCache
@@ -13,7 +13,7 @@ MODEL, REVISION = "Qwen/Qwen2.5-0.5B-Instruct", "7ae557604adf67be50417f59c2c2f16
 MAX_TOKENS = 768  # longer calls are dropped and counted; chunked scoring would lift this
 RESULTS = ROOT / "results"
 ADAPTER = RESULTS / "adapter.safetensors"
-torch.set_num_threads(8)
+torch.set_num_threads(int(os.environ.get("OMP_NUM_THREADS", 8)))
 
 
 class LoRA(nn.Module):

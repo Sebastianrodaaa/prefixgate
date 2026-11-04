@@ -9,7 +9,7 @@ USER user
 ENV HOME=/home/user HF_HOME=/home/user/.cache/huggingface HOST=0.0.0.0 OMP_NUM_THREADS=2 PREFIXGATE_AGENT_LIVE=0
 ARG REF=main
 # re-clone whenever REF moves
-ADD https://api.github.com/repos/Sebastianrodaaa/prefixgate/commits/${REF} /tmp/ref.json
+ADD https://github.com/Sebastianrodaaa/prefixgate/commits/${REF}.atom /tmp/ref.atom
 RUN git clone --depth 1 -b ${REF} https://github.com/Sebastianrodaaa/prefixgate /home/user/app
 WORKDIR /home/user/app
 # bake the pinned Policy Gates data (sha256-checked) and the Qwen2.5-0.5B gate into the image; no Llama download
