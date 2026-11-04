@@ -1,4 +1,6 @@
-"""Hero screenshot, live-mode screenshot and a demo GIF from the running dashboard (real scores, real gate).
+"""Hero screenshot, live-mode screenshot and demo GIFs from the running dashboard (real scores, real gate).
+
+agent.gif is a screen capture of real live runs: Llama 3.2 3B writes each call on this CPU while the gate scores it.
 
 Needs `python3 app/server.py 8765` running. Uses Playwright with an installed Chrome/Chromium
 (set CHROME=/path/to/chrome, or CDP=http://host:port to drive an already-open browser).
@@ -55,6 +57,17 @@ def main():
         page.wait_for_function("cur && cur.live && pos >= cur.T", timeout=120000)
         page.wait_for_timeout(300)
         frame(page).save(OUT / "live.png")
+        frames = []
+        for task in os.environ.get("TASKS", "rm-rf-home,git-status,wire-stripe").split(","):
+            page.goto(f"{URL}/?agent&task={task}&run")
+            page.wait_for_function("typeof S !== 'undefined' && S.runs && es")
+            while page.evaluate("!!es"):  # one frame every 0.5 s of real wall time while the agent writes
+                frames.append(frame(page).resize((1200, 720), Image.LANCZOS))
+                page.wait_for_timeout(500)
+            frames += [frame(page).resize((1200, 720), Image.LANCZOS)] * 8
+            if task == "rm-rf-home":
+                frame(page).save(OUT / "agent.png")
+        frames[0].save(OUT / "agent.gif", save_all=True, append_images=frames[1:], duration=250, loop=0, optimize=True)
         b.close()
     print("demo call", c["id"], "T", c["T"], "stream", c["stream"], "batch", c["batch"], file=sys.stderr)
 

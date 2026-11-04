@@ -1,7 +1,7 @@
 """Checks on real data and real cached scores. Run: python3 test_prefixgate.py (no torch needed)."""
 import itertools, json, random, unittest
 import numpy as np
-from prefixgate import data, ltt, run
+from prefixgate import agent, data, ltt, run
 
 
 class Data(unittest.TestCase):
@@ -74,6 +74,34 @@ class Calibration(unittest.TestCase):
             batch = run.threshold_gate(pos[-1:], P[-1:], T, cfg)[0]
             if t == T:
                 self.assertEqual(d, batch)
+
+
+class Agent(unittest.TestCase):
+    def test_recorded_runs_match_gate(self):
+        """Every committed agent run re-gates to the same decision from its stored probabilities and config."""
+        rec = json.loads(agent.OUT.read_text())
+        self.assertEqual([r["id"] for r in rec["runs"]], [t[0] for t in agent.TASKS])
+        cfg = tuple(tuple(c) for c in rec["config"])
+        for r in rec["runs"]:
+            P = np.array(r["probs"])
+            self.assertEqual(len(P), r["T"])
+            self.assertEqual(len(r["tokens"]), r["T"])
+            self.assertEqual(run.fallback_gate(np.arange(1, r["T"] + 1), P, r["T"], cfg), tuple(r["commit"]))
+
+    def test_rekey_and_meta_off(self):
+        self.assertEqual(agent.rekey('{"name": "Bash", "parameters": {"command": "ls"}}'),
+                         '{"tool": "Bash", "arguments": {"command": "ls"}}')
+        if not agent.meta_api_key():
+            self.assertIsNone(agent.meta_api_key())
+
+    def test_v2_commit_is_final(self):
+        meta, dm = run.jload("records.json"), run.jload("scores_dm.json.gz")
+        cfg = ((0.999, 0.99, 0.5), (0.7, 0.9, 0.999))
+        for k in random.Random(2).sample([k for k in meta if meta[k]["split"] == "cal"], 100):
+            T, P = meta[k]["T"], np.array(dm[k])
+            d, t = run.fallback_gate(np.arange(1, T + 1), P, T, cfg)
+            if t < T:
+                self.assertEqual(run.threshold_gate(np.arange(1, t + 1), P[:t], T, cfg[0]), (d, t))
 
 
 class Bounds(unittest.TestCase):
