@@ -50,7 +50,7 @@ th{color:var(--dim);font-weight:400}tr.me td{color:var(--fg);font-weight:700}td{
 <div class="app">
 <header>
   <div class="logo"><b></b>prefixgate</div>
-  <div class="tabs" role="group" aria-label="mode"><button id="tReplay" aria-pressed="true">replay</button><button id="tLive" aria-pressed="false">live</button></div>
+  <div class="tabs" role="group" aria-label="mode"><button id="tReplay" aria-pressed="true">replay</button><button id="tLive" aria-pressed="false">live</button><button id="tAgent" aria-pressed="false">agent</button></div>
   <span class="chip" id="model">qwen2.5-0.5b · cpu</span>
   <span class="sp"></span>
   <label class="note" for="alpha">risk</label><select id="alpha"></select>
@@ -61,6 +61,13 @@ th{color:var(--dim);font-weight:400}tr.me td{color:var(--fg);font-weight:700}td{
     <div class="h"><span>held-out calls</span><span id="ncalls"></span></div>
     <div class="filters" id="filters"></div>
     <div class="list" id="list" role="listbox" aria-label="test calls"></div>
+  </section>
+  <section class="panel hide" style="flex:1" id="agentP">
+    <div class="h"><span>agent tasks</span><span id="agentWho"></span></div>
+    <div class="ctrl" style="margin:0 0 8px"><button id="runLive" style="white-space:nowrap">run live</button><select id="src" aria-label="agent source"></select></div>
+    <div class="note" id="agentStat" style="margin:0 0 8px;min-height:1.2em" aria-live="polite"></div>
+    <div class="list" id="tasks" role="listbox" aria-label="agent tasks"></div>
+    <div class="note" style="margin-top:6px">○ allow ■ deny ◇ escalate · left: task intent · right: recorded gate</div>
   </section>
   <section class="panel live hide" style="flex:1" id="liveP">
     <div class="h"><span>paste a tool call</span><span>real model, nothing runs</span></div>
@@ -84,14 +91,20 @@ th{color:var(--dim);font-weight:400}tr.me td{color:var(--fg);font-weight:700}td{
 </div>
 <script>
 const $=id=>document.getElementById(id), L=["allow","deny","escalate"], G={allow:"○",deny:"■",escalate:"◇"};
-let S={},calls=[],cur=null,pos=1,timer=null,filt="all",mode="replay";
+let S={},calls=[],cur=null,pos=1,timer=null,filt="all",mode="replay",AG={runs:[]},es=null;
 const fmt=(x,d=3)=>x==null?"-":(+x).toFixed(d), run=()=>S.runs.find(r=>`${r.alpha_allow},${r.alpha_deny}`==$("alpha").value);
-const cfg=()=>run().methods.prefixgate.config;
-async function j(u,o){const r=await fetch(u,o);return r.json()}
+const cfg=(a=mode=="agent")=>run().methods[a?"prefixgate_v2":"prefixgate"].config;
+async function j(u,o){const r=await fetch(window.STATIC?stat(u):u,o);return r.json()}
+function stat(u){const[p,q]=u.split("?"),a=new URLSearchParams(q); // static export (scripts/static_space.py): the same answers as files
+  return p=="/api/summary"?"data/summary.json":p=="/api/calls"?`data/calls_${a.get("alpha")}.json`:p=="/api/call"?`data/call/${a.get("id").replace(/[^\w-]/g,"_")}.json`:"data/agent.json"}
 function gate(P,T,c){ // mirror of prefixgate.run.threshold_gate on every prefix
   if(!c)return{d:"escalate",t:T,none:true};const[la,ld,le]=c;
   for(let i=0;i<P.length;i++){const p=P[i];if(p[1]>=ld)return{d:"deny",t:i+1};if(p[2]>=le)return{d:"escalate",t:i+1};if(p[0]>=la)return{d:"allow",t:i+1}}
-  return{d:"escalate",t:T}}
+  return{d:"escalate",t:T,open:true}}
+function gate2(P,c,done){ // mirror of prefixgate.run.fallback_gate; while the call is still streaming the end is unknown
+  if(!c)return{d:"escalate",t:P.length,none:true};const n=done?P.length-1:P.length,s=gate(P.slice(0,n),n,c[0]);if(!s.open)return s;
+  if(!done)return{d:"pending",t:Infinity};const p=P[P.length-1],[la,ld,le]=c[1];
+  return{d:p[1]>=ld?"deny":p[2]>=le?"escalate":p[0]>=la?"allow":"escalate",t:P.length,end:true}}
 function batch(P,T){const c=run().methods.batch_policy_gate.config;return gate(P.slice(-1),T,c).d}
 async function init(){
   S=await j("/api/summary");
@@ -101,39 +114,47 @@ async function init(){
   $("filters").innerHTML=["all","allow","deny","escalate","attacked"].map(f=>`<button data-f="${f}" aria-pressed="${f==filt}">${f}</button>`).join("");
   $("filters").onclick=e=>{if(e.target.dataset.f){filt=e.target.dataset.f;[...$("filters").children].forEach(b=>b.ariaPressed=b.dataset.f==filt);list()}};
   $("rules").innerHTML=S.rules.map(r=>`<div class="rule" id="r-${r.templateId}" title="${r.definition.replace(/"/g,"&quot;")}"><span class="a">${{block:"deny",ask:"esc",allow:"allow"}[r.recommendedAction]}</span><span>${r.templateId}</span></div>`).join("");
-  $("tReplay").onclick=()=>setMode("replay");$("tLive").onclick=()=>setMode("live");$("go").onclick=liveGo;
+  $("tReplay").onclick=()=>setMode("replay");$("tLive").onclick=()=>setMode("live");$("tAgent").onclick=()=>setMode("agent");$("go").onclick=liveGo;
+  AG=await j("/api/agent");$("src").innerHTML=AG.sources.map(s=>`<option value="${s}">${s=="llama"?"llama-3.2-3b · cpu":"meta model api"}</option>`).join("");
+  $("agentWho").textContent=AG.runs.length?`${AG.runs.length} recorded runs`:"";$("runLive").onclick=()=>agentLive(agentSel);
+  if(window.STATIC){$("go").disabled=true;$("liveStat").textContent="static page: live scoring needs the server (make app)"}
+  if(!AG.sources.length){$("runLive").disabled=true;$("runLive").textContent="replay only";$("src").classList.add("hide")}
+  $("tasks").onclick=e=>{const r=e.target.closest(".row");if(r)agentPick(r.dataset.id)};
   $("play").onclick=()=>timer?stop():playIt();$("scrub").oninput=e=>{pos=+e.target.value;draw()};
   addEventListener("resize",draw);await reload();
-  const q=new URLSearchParams(location.search);if(q.get("id"))pick(q.get("id"));else{const f=calls.find(c=>c.attack&&c.stream&&c.stream[0]=="deny"&&c.T>120)||calls[0];pick(f.id)}
-  if(q.get("live")!=null)setMode("live");if(q.get("play")!=null)playIt()}
+  const q=new URLSearchParams(location.search);if(!location.search&&!AG.sources.length)q.set("agent","");if(q.get("id"))pick(q.get("id"));else if(q.get("agent")==null){const f=calls.find(c=>c.attack&&c.stream&&c.stream[0]=="deny"&&c.T>120)||calls[0];pick(f.id)}
+  if(q.get("live")!=null)setMode("live");if(q.get("agent")!=null){setMode("agent");agentPick(q.get("task")||"rm-rf-home");if(q.get("run")!=null)agentLive(agentSel)}
+  if(q.get("play")!=null)playIt()}
 async function reload(){calls=await j("/api/calls?alpha="+$("alpha").value);table();list();if(cur)draw();
-  const c=cfg();$("cfg").textContent=c?`λ allow ${c[0]} · deny ${c[1]} · esc ${c[2]}`:"no valid configuration"}
+  setMode(mode)}
 function list(){const cs=calls.filter(c=>filt=="all"||(filt=="attacked"?c.attack:c.gold==filt));$("ncalls").textContent=cs.length;
   $("list").innerHTML=cs.map(c=>`<div class="row" role="option" data-id="${c.id}" aria-selected="${cur&&cur.id==c.id}"><span class="id">${c.attack?"⚑ ":""}${c.id}</span><span>${c.T}</span><span class="g" title="gold ${c.gold}">${G[c.gold]}</span></div>`).join("");
   $("list").onclick=e=>{const r=e.target.closest(".row");if(r)pick(r.dataset.id)}}
-function table(){const r=run(),names={prefixgate:"prefixgate (stream)",prefixgate_stride16:"prefixgate /16 tok",batch_policy_gate:"batch policy gate",dm_entropy:"dm entropy",prompted_threshold:"prompted qwen",prompted_entropy:"prompted entropy",prompted_batch:"prompted batch",probe_50pct:"probe @50%"};
+function table(){const r=run(),names={prefixgate:"prefixgate (stream)",prefixgate_stride16:"prefixgate /16 tok",batch_policy_gate:"batch policy gate",dm_entropy:"dm entropy",prompted_threshold:"prompted qwen",prompted_entropy:"prompted entropy",prompted_batch:"prompted batch",probe_50pct:"probe @50%",prefixgate_v2:"prefixgate v2 (stream + end)"};
   const pg=r.methods.prefixgate.test;$("resNote").textContent=pg?`n=${pg.n} · lead vs batch Δmedian ${fmt(pg.median_lead_diff_vs_batch_policy_gate,0)} tok, 95% CI [${pg.ci95_vs_batch_policy_gate.map(x=>fmt(x,0)).join(", ")}]`:"";
   $("tbl").innerHTML="<tr><th>method</th><th>λ / τ</th><th>valid</th><th>false-allow</th><th>false-deny</th><th>escalate</th><th>accuracy</th><th>median lead</th><th>mean lead</th><th>agree batch</th><th>shift FA</th><th>shift FD</th></tr>"+
-  Object.entries(r.methods).map(([k,m])=>{const t=m.test,s=m.shift;return `<tr class="${k=="prefixgate"?"me":""}"><td>${names[k]||k}</td><td>${m.config==null?"none":Array.isArray(m.config)?m.config.join("/"):m.config}</td><td>${m.n_valid_configs}</td>`+
+  Object.entries(r.methods).map(([k,m])=>{const t=m.test,s=m.shift;return `<tr class="${k=="prefixgate"?"me":""}"><td>${names[k]||k}</td><td>${m.config==null?"none":Array.isArray(m.config)?(Array.isArray(m.config[0])?m.config.map(x=>x.join("/")).join(" · "):m.config.join("/")):m.config}</td><td>${m.n_valid_configs}</td>`+
   (t?`<td>${fmt(t.false_allow)}${t.fa_inside_binomial_95?"":" ✕"}</td><td>${fmt(t.false_deny)}${t.fd_inside_binomial_95?"":" ✕"}</td><td>${fmt(t.escalate_rate,2)}</td><td>${fmt(t.accuracy,2)}</td><td>${fmt(t.median_lead_tokens,0)} tok</td><td>${fmt(t.mean_lead_tokens,0)}</td><td>${fmt(t.agree_with_batch,2)}</td><td>${fmt(s&&s.false_allow)}</td><td>${fmt(s&&s.false_deny)}</td>`:`<td colspan="9" style="text-align:left">no configuration certified at this α</td>`)+"</tr>"}).join("")}
 async function pick(id){stop();cur=await j("/api/call?id="+encodeURIComponent(id));cur.live=false;setup();list()}
 function setup(){pos=cur.T;$("scrub").max=cur.T;$("scrub").value=pos;
   $("toks").innerHTML=cur.tokens.map((t,i)=>`<i id="k${i}">${t.replace(/&/g,"&amp;").replace(/</g,"&lt;")}</i>`).join("");
   document.querySelectorAll(".rule").forEach(r=>r.classList.toggle("on",!!(cur.truth&&cur.truth[r.id.slice(2)])));
-  $("meta").textContent=cur.live?`pasted · ${cur.T} tok`:`${cur.id} · gold ${cur.gold}${cur.attack?` · attack ${cur.attack}@${cur.position}`:""} · ${cur.T} tok`;draw()}
-function draw(){if(!cur)return;const c=cfg(),g=gate(cur.probs,cur.T,c),b=batch(cur.probs,cur.T),p=cur.probs[pos-1],ms=S.latency.median_ms_per_token;
+  $("meta").textContent=cur.agent?`${cur.id} · intent ${cur.intent} · ${cur.T} tok${cur.done?"":" · streaming"}`:cur.live?`pasted · ${cur.T} tok`:`${cur.id} · gold ${cur.gold}${cur.attack?` · attack ${cur.attack}@${cur.position}`:""} · ${cur.T} tok`;draw()}
+function draw(){if(!cur||!cur.T)return;const A=!!cur.agent,c=cfg(A),g=A?gate2(cur.probs,c,cur.done):gate(cur.probs,cur.T,c),p=cur.probs[pos-1],ms=S.latency.median_ms_per_token;
+  const b=A?(cur.done&&c?gate2(cur.probs.slice(-1),[c[0],c[1]],true).d:"waiting for the full call"):batch(cur.probs,cur.T);
   const seen=g.t<=pos;$("pos").textContent=`prefix ${pos}/${cur.T}`;
   cur.tokens.forEach((_,i)=>{const e=$("k"+i);e.className=i>=pos?"f":(seen&&i+1==g.t?"c":(seen&&i+1>g.t?"lead":""))});
   const lead=seen?cur.T-g.t:0;$("lead").innerHTML=`${lead}<small>tok early</small>`;
-  $("leadMs").textContent=seen?`≈ ${(lead*ms/1000).toFixed(2)} s of agent decode at ${fmt(ms,1)} ms/tok`:"waiting for a threshold";
+  $("leadMs").textContent=A?(seen&&cur.commit_ms!=null&&cur.done?`gate at ${(cur.commit_ms/1000).toFixed(1)} s · agent done writing at ${(cur.wall_ms/1000).toFixed(1)} s`:`agent writing · ${((cur.ms||0)/1000).toFixed(1)} s`):
+    seen?`≈ ${(lead*ms/1000).toFixed(2)} s of agent decode at ${fmt(ms,1)} ms/tok`:"waiting for a threshold";
   $("batchSays").textContent=`batch gate on full call: ${b}${seen&&g.d!=b?" · disagrees":""}`;
-  $("verdict").textContent=seen?(g.d=="allow"?"allow":g.d=="deny"?"deny · fail closed":"escalate · judge"):(c?"streaming":"no λ certified");
-  $("leadOf").textContent=cur.live?"":"gold "+cur.gold;
-  $("bars").innerHTML=L.map((l,i)=>`<div class="b"><span>${l}</span><div class="track"><div class="fill ${l[0]}" style="width:${p[i]*100}%"></div>${c?`<div class="thr" style="left:${[c[0],c[1],c[2]][i]*100}%"></div>`:""}</div><span>${fmt(p[i],2)}</span></div>`).join("");
-  const lg=[];if(!cur.live&&cur.attack)lg.push(`<b>t=0</b> published template "${cur.attack}" placed ${cur.position}`);
-  for(let i=1;i<=pos;i++){const q=cur.probs[i-1],k=q.indexOf(Math.max(...q)),pk=i>1?cur.probs[i-2].indexOf(Math.max(...cur.probs[i-2])):-1;if(k!=pk)lg.push(`<b>t=${i}</b> argmax → ${L[k]} (${fmt(q[k],2)})`);if(i==g.t&&seen&&!g.none&&i<=pos)lg.push(`<b>t=${i}</b> GATE ${g.d.toUpperCase()} · ${cur.T-i} tok before full call`)}
-  if(pos==cur.T)lg.push(`<b>t=${cur.T}</b> full call · batch ${b}${cur.live?"":` · gold ${cur.gold}`}`);
-  if(seen&&g.d!="allow")lg.push(`<b>·</b> no tool executed`);$("log").innerHTML=lg.slice(-60).map(x=>`<div>${x}</div>`).join("");$("log").scrollTop=1e9;$("gid").textContent=g.none?"no λ":g.d;
+  $("verdict").textContent=seen?(A?{allow:"allow · to the tool",deny:"deny · agent halted",escalate:"escalate · held for a human"}[g.d]:g.d=="allow"?"allow":g.d=="deny"?"deny · fail closed":"escalate · judge"):(c?"streaming":"no λ certified");
+  $("leadOf").textContent=A?"intent "+cur.intent:cur.live?"":"gold "+cur.gold;
+  $("bars").innerHTML=L.map((l,i)=>`<div class="b"><span>${l}</span><div class="track"><div class="fill ${l[0]}" style="width:${p[i]*100}%"></div>${c?`<div class="thr" style="left:${(A?c[0]:c)[i]*100}%"></div>`:""}</div><span>${fmt(p[i],2)}</span></div>`).join("");
+  const lg=[];if(!cur.live&&cur.attack)lg.push(`<b>t=0</b> published template "${cur.attack}" placed ${cur.position}`);if(A)lg.push(`<b>t=0</b> task: ${cur.task}`);
+  for(let i=1;i<=pos;i++){const q=cur.probs[i-1],k=q.indexOf(Math.max(...q)),pk=i>1?cur.probs[i-2].indexOf(Math.max(...cur.probs[i-2])):-1;if(k!=pk)lg.push(`<b>t=${i}</b> argmax → ${L[k]} (${fmt(q[k],2)})`);if(i==g.t&&seen&&!g.none&&i<=pos)lg.push(`<b>t=${i}</b> GATE ${g.d.toUpperCase()} · ${A&&g.end?"on the finished call":`${cur.T-i} tok before full call`}`)}
+  if(pos==cur.T&&(!A||cur.done))lg.push(`<b>t=${cur.T}</b> full call · batch ${b}${cur.live?"":` · gold ${cur.gold}`}`);
+  if(seen&&g.d!="allow")lg.push(`<b>·</b> no tool executed${A&&!g.end?" · the agent kept writing, shown dim":""}`);$("log").innerHTML=lg.slice(-60).map(x=>`<div>${x}</div>`).join("");$("log").scrollTop=1e9;$("gid").textContent=g.none?"no λ":g.d;
   plot(c,g)}
 function plot(c,g){const cv=$("cv"),r=cv.getBoundingClientRect(),dp=devicePixelRatio||1;cv.width=r.width*dp;cv.height=r.height*dp;const x=cv.getContext("2d");x.scale(dp,dp);
   const W=r.width,H=r.height,pad=4,T=cur.T,X=i=>pad+(W-2*pad)*(i-1)/Math.max(1,T-1),Y=v=>H-pad-(H-2*pad)*v;
@@ -145,7 +166,29 @@ function plot(c,g){const cv=$("cv"),r=cv.getBoundingClientRect(),dp=devicePixelR
   if(g.t<=pos&&!g.none){x.fillStyle="#f2f2f2";x.fillRect(X(g.t)-1,0,2,H);x.font="10px "+getComputedStyle(document.body).fontFamily;x.fillText(" "+g.d,X(g.t)+3,12)}}
 function playIt(){if(pos>=cur.T)pos=1;$("play").textContent="pause";const step=()=>{pos=Math.min(cur.T,pos+1);$("scrub").value=pos;draw();if(pos>=cur.T)return stop();timer=setTimeout(step,S.latency.median_ms_per_token/+$("speed").value)};timer=setTimeout(step,0)}
 function stop(){clearTimeout(timer);timer=null;$("play").textContent="play"}
-function setMode(m){mode=m;$("tReplay").ariaPressed=m=="replay";$("tLive").ariaPressed=m=="live";$("callsP").classList.toggle("hide",m=="live");$("liveP").classList.toggle("hide",m!="live")}
+function setMode(m){mode=m;$("tReplay").ariaPressed=m=="replay";$("tLive").ariaPressed=m=="live";$("tAgent").ariaPressed=m=="agent";
+  $("callsP").classList.toggle("hide",m!="replay");$("liveP").classList.toggle("hide",m!="live");$("agentP").classList.toggle("hide",m!="agent");
+  const c=cfg();$("cfg").textContent=!c?"no valid configuration":m=="agent"?`v2 · stream ${c[0].join("/")} · end ${c[1].join("/")}`:`λ allow ${c[0]} · deny ${c[1]} · esc ${c[2]}`;
+  $("model").textContent=m=="agent"?"llama-3.2-3b-instruct writes · qwen2.5-0.5b dm gates · cpu":`qwen2.5-0.5b-instruct · lora · cpu · ${fmt(S.latency.median_ms_per_token,1)} ms/tok`;
+  if(m=="agent"){agentList();agentTable()}else table();if(cur)draw()}
+let agentSel=null;
+const recRun=id=>AG.runs.find(r=>r.id==id);
+function agentList(){$("tasks").innerHTML=AG.tasks.map(t=>{const r=recRun(t.id),g=r?gate2(r.probs,cfg(),true).d:null;
+  return `<div class="row" role="option" data-id="${t.id}" aria-selected="${agentSel==t.id}" title="${t.task.replace(/"/g,"&quot;")}"><span class="id">${t.id}</span><span class="g" title="intent ${t.intent}">${G[t.intent]}</span><span class="g" title="recorded gate ${g}">${g?G[g]:"·"}</span></div>`}).join("")}
+function agentPick(id){stop();agentSel=id;const t=AG.tasks.find(t=>t.id==id),r=recRun(id);
+  cur=Object.assign({live:true,agent:true,done:true,truth:{}},t,r||{tokens:[],probs:[],T:0});if(cur.T){setup()}else{$("toks").textContent="no recorded run · press run live";$("meta").textContent=id}agentList();
+  $("agentStat").textContent=r?`replay of a real recorded run · ${AG.agent.split("@")[0]} · ${AG.cpu}`+(AG.sources.length?"":" · live agent off on this host"):""}
+function agentLive(id){if(!id||es)return;stop();const t=AG.tasks.find(t=>t.id==id);$("runLive").textContent="running";$("agentStat").textContent="starting";$("toks").textContent="";$("log").innerHTML="";
+  es=new EventSource(`/api/agent/stream?task=${id}&src=${$("src").value}&alpha=${$("alpha").value}`);
+  es.onmessage=e=>{const d=JSON.parse(e.data);if(d.status){$("agentStat").textContent=d.status;return}
+    cur=Object.assign({live:true,agent:true,truth:{},done:false},t,d,{T:d.tokens.length});$("agentStat").textContent=`${((d.ms||0)/1000).toFixed(1)} s · ${cur.T} tok`;
+    if(cur.T){pos=cur.T;$("scrub").max=cur.T;$("scrub").value=pos;setup()}
+    if(d.done){es.close();es=null;$("runLive").textContent="run live";const i=AG.runs.findIndex(r=>r.id==id);if(i>=0)AG.runs[i]=Object.assign({},AG.runs[i],d)}};
+  es.onerror=()=>{es.close();es=null;$("runLive").textContent="run live";$("agentStat").textContent="stream closed"}}
+function agentTable(){const c=cfg();$("resNote").textContent=AG.agent?`${AG.agent.split("@")[0]} · greedy · ${AG.cpu||""}`:"no recorded agent run";
+  $("tbl").innerHTML="<tr><th>task</th><th>intent</th><th>tool the agent wrote</th><th>gate v2</th><th>at token</th><th>gate v1</th><th>batch</th><th>gate s</th><th>agent s</th><th>call</th></tr>"+
+  AG.runs.map(r=>{const g=gate2(r.probs,c,true),b=gate2(r.probs.slice(-1),c,true).d;return `<tr class="${r.id==agentSel?"me":""}" data-id="${r.id}" style="cursor:pointer"><td>${r.id}</td><td>${r.intent}</td><td>${r.tool||"invalid json"}</td><td>${g.d}</td><td>${g.t}/${r.T}</td><td>${r.v1?r.v1[0]:"-"}</td><td>${b}</td><td>${(r.commit_ms/1000).toFixed(1)}</td><td>${(r.wall_ms/1000).toFixed(1)}</td><td style="text-align:left;max-width:380px;overflow:hidden;text-overflow:ellipsis">${r.call.replace(/&/g,"&amp;").replace(/</g,"&lt;")}</td></tr>`}).join("");
+  $("tbl").onclick=e=>{const r=e.target.closest("tr[data-id]");if(r)agentPick(r.dataset.id)}}
 async function liveGo(){stop();$("liveStat").textContent="scoring on cpu…";const t0=performance.now();
   const r=await j("/api/live",{method:"POST",body:$("paste").value});if(r.error){$("liveStat").textContent=r.error;return}
   $("liveStat").textContent=`${r.T} tok scored in ${((performance.now()-t0)/1000).toFixed(1)} s`;cur=Object.assign(r,{live:true,truth:{}});setup();playIt()}
