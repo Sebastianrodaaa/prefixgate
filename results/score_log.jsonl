@@ -1,0 +1,3 @@
+{"event": "dm", "n": 2114, "dropped_over_max_tokens": 361, "wall_s": 1157.1}
+{"event": "latency", "n": 20, "median_ms_per_token": 28.29, "max_abs_diff_stream_vs_batch": 4.827976226806641e-06}
+{"event": "baselines", "n": 4395, "stride": 16, "wall_s": 13115.3}
