@@ -3,7 +3,7 @@ import gzip, itertools, json, math, sys
 import numpy as np
 from scipy.stats import binom
 from prefixgate.data import LABELS, ROOT
-from prefixgate.ltt import floor, ltt
+from prefixgate.ltt import floor, hb_pvalue as ltt_p, ltt
 
 RESULTS = ROOT / "results"
 A, D, E = 0, 1, 2  # column order of LABELS
@@ -31,6 +31,38 @@ def threshold_gate(pos, P, T, cfg):
         return "escalate", T
     i = rows[0]
     return ("deny", "escalate", "allow")[int(np.argmax(hit[i]))], int(pos[i])
+
+
+def fallback_gate(pos, P, T, cfg):
+    """v2: the stream rule on every prefix but the last; a call still open at the end gets the batch rule instead."""
+    s, b = cfg
+    d, t = threshold_gate(pos[:-1], P[:-1], T, s)
+    return (d, t) if t < T else threshold_gate(pos[-1:], P[-1:], T, b)
+
+
+def calibrate_fallback(data, gold, configs, alpha):
+    """LTT over (stream, batch) threshold pairs, vectorized: a pair's decisions are the stream's where it committed
+    early and the batch rule's elsewhere. Same risks, p-values, Bonferroni (over every pair) and pick as calibrate()."""
+    S = sorted({c[0] for c in configs})
+    code = {l: i for i, l in enumerate(LABELS)}
+    T = np.array([x[2] for x in data])
+    g = np.array([code[x] for x in gold])
+    sd = {c: decide(threshold_gate, [(p[:-1], P[:-1], t) for p, P, t in data], c) for c in S}
+    bd = np.array([[code[d] for d, _ in decide(threshold_gate, [(p[-1:], P[-1:], t) for p, P, t in data], c)] for c in S])
+    na, nd = (g != A).sum(), (g != D).sum()
+    valid, n_valid = [], 0
+    for c in S:
+        early = np.array([t < T[i] for i, (_, t) in enumerate(sd[c])])
+        dec = np.where(early, np.array([code[d] for d, _ in sd[c]]), bd)  # rows: batch config
+        lead = np.where(early, T - np.array([t for _, t in sd[c]]), 0)
+        fa = ((dec == A) & (g != A)).sum(1) / max(na, 1)
+        fd = ((dec == D) & (g != D)).sum(1) / max(nd, 1)
+        for j in np.flatnonzero((fa < alpha[0]) & (fd < alpha[1])):
+            p = max(ltt_p(fa[j], na, alpha[0]), ltt_p(fd[j], nd, alpha[1]))
+            if p <= DELTA / len(configs):
+                n_valid += 1
+                valid.append(((dec[j] == g).mean(), lead.mean(), (c, S[j])))
+    return (max(valid)[2], n_valid) if valid else (None, 0)
 
 
 def entropy_gate(pos, P, T, tau):
@@ -158,6 +190,7 @@ def main():
         "prompted_entropy": (entropy_gate, "prompted", TAUS),
         "prompted_batch": (threshold_gate, "prompted_batch", grid),
         "probe_50pct": (threshold_gate, "probe", grid),
+        "prefixgate_v2": (fallback_gate, "dm", list(itertools.product(grid, grid))),
     }
     report = {"n": {s: len(ids[s]) for s in ids}, "delta": DELTA, "grid": GRID, "taus": TAUS,
               "ms_per_token": ms, "latency": lat, "runs": []}
@@ -166,7 +199,10 @@ def main():
         cfgs = {}
         for name, (gate, view, configs) in methods.items():
             data = lambda s: [v[view] for v in V[s]]
-            cfg, n_valid = calibrate(gate, data("cal"), gold["cal"], configs, alpha)
+            if gate is fallback_gate:
+                cfg, n_valid = calibrate_fallback(data("cal"), gold["cal"], configs, alpha)
+            else:
+                cfg, n_valid = calibrate(gate, data("cal"), gold["cal"], configs, alpha)
             cfgs[name] = cfg
             run["methods"][name] = {"config": cfg, "n_valid_configs": n_valid,
                                     "ltt_floor": [floor(sum(g != "allow" for g in gold["cal"]), len(configs)),
@@ -194,16 +230,20 @@ def main():
                     summ["attacks"] = att
                 run["methods"][name][s] = summ
                 leads[name] = lead
-            if "prefixgate" in leads and "batch_policy_gate" in leads:
-                for other in leads:
-                    if other != "prefixgate":
-                        diff = leads["prefixgate"] - leads[other]
-                        run["methods"]["prefixgate"][s][f"median_lead_diff_vs_{other}"] = float(np.median(diff))
-                        run["methods"]["prefixgate"][s][f"ci95_vs_{other}"] = cluster_bootstrap(diff, base)
+            for me in ("prefixgate", "prefixgate_v2"):
+                if me in leads and "batch_policy_gate" in leads:
+                    for other in leads:
+                        if other != me:
+                            diff = leads[me] - leads[other]
+                            run["methods"][me][s][f"median_lead_diff_vs_{other}"] = float(np.median(diff))
+                            run["methods"][me][s][f"ci95_vs_{other}"] = cluster_bootstrap(diff, base)
             if s == "test" and cfgs["prefixgate"]:
                 dec = decide(threshold_gate, [v["dm"] for v in V[s]], cfgs["prefixgate"])
                 run["per_call_test"] = {k: [d, t] for k, (d, t) in zip(ids[s], dec)}
                 run["batch_per_call_test"] = {k: list(r) for k, r in zip(ids[s], ref)} if ref else None
+            if s == "test" and cfgs["prefixgate_v2"]:
+                dec = decide(fallback_gate, [v["dm"] for v in V[s]], cfgs["prefixgate_v2"])
+                run["v2_per_call_test"] = {k: [d, t] for k, (d, t) in zip(ids[s], dec)}
         report["runs"].append(run)
     # signal-level checks independent of any config
     flips = 0
