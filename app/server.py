@@ -165,5 +165,6 @@ class H(BaseHTTPRequestHandler):
 if __name__ == "__main__":
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 8765
     boot()
-    print(f"prefixgate dashboard on http://127.0.0.1:{port}", flush=True)
-    ThreadingHTTPServer((os.environ.get("HOST", "127.0.0.1"), port), H).serve_forever()
+    host = os.environ.get("HOST", "127.0.0.1")
+    print(f"prefixgate dashboard on http://{host}:{port}", flush=True)
+    ThreadingHTTPServer((host, port), H).serve_forever()
