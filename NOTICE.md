@@ -21,6 +21,19 @@ material, each under its own terms.
   Apache-2.0. Downloaded from Hugging Face at run time, not redistributed. `results/adapter.safetensors` holds only
   the LoRA and head weights trained here.
 
+- **Llama 3.2 3B Instruct** (Meta), the agent in `prefixgate/agent.py`. Meta's own repository
+  (`meta-llama/Llama-3.2-3B-Instruct`) is gated, so the weights are pulled from the ungated mirror
+  [unsloth/Llama-3.2-3B-Instruct](https://huggingface.co/unsloth/Llama-3.2-3B-Instruct) at revision
+  `006f5dcd1393c3add266de40994ba96225e9689d`, an unmodified 16-bit copy of Meta's release (its card names
+  `meta-llama/Llama-3.2-3B-Instruct` as the base model). License: Llama 3.2 Community License Agreement
+  (https://www.llama.com/llama3_2/license/), Acceptable Use Policy (https://www.llama.com/llama3_2/use-policy/).
+  Downloaded at run time, not redistributed. Built with Llama.
+- **Llama 3.2 1B Instruct** (Meta), tried first and dropped, same mirror family
+  ([unsloth/Llama-3.2-1B-Instruct](https://huggingface.co/unsloth/Llama-3.2-1B-Instruct) @ `5a8abab4a5d6f164389b1079fb721cfab8d7126c`),
+  same license.
+- **Meta Model API** (Muse Spark, `muse-spark-1.3` at `https://api.meta.ai/v1`): optional adapter, used only when
+  `META_API_KEY` is set. Not used for any committed result. Its terms are Meta's.
+
 ## Art and fonts (banner only, `scripts/banner.py`)
 
 - Gustave Doré, *Inferno, Canto III: "Abandon all hope, ye who enter here"* (1857), wood engraving. Public domain.

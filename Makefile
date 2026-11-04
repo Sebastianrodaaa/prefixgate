@@ -1,6 +1,6 @@
 PY ?= python3
 
-.PHONY: test repro all data train score latency baselines run plots banner app demo
+.PHONY: test repro all data train score latency baselines run plots banner app demo agent gif
 
 test:            ## checks on real data and the committed scores (no torch)
 	$(PY) -m prefixgate.ltt && $(PY) test_prefixgate.py
@@ -27,5 +27,10 @@ banner:
 	$(PY) scripts/banner.py
 app:
 	$(PY) app/server.py 8765
-demo:
+agent:          ## Llama 3.2 3B writes 24 tool calls, the gate streams them; results/agent_runs.json, ~6 min
+	$(PY) -m prefixgate.agent
+demo:           ## the live agent dashboard on :8765 (first live run loads Llama + the gate, ~30 s)
+	@echo "open http://127.0.0.1:8765/?agent"
+	$(PY) app/server.py 8765
+gif:            ## screenshots + GIFs from a running dashboard (needs `make demo` in another shell)
 	$(PY) scripts/demo_gif.py

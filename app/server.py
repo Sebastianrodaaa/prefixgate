@@ -1,4 +1,5 @@
-"""Local dashboard: replays real scored calls from results/ and scores pasted calls live with the trained DM.
+"""Local dashboard: replays real scored calls from results/, scores pasted calls live with the trained DM, and runs
+the Llama agent live with its tool calls gated token by token (/api/agent/stream, server-sent events).
 
 Nothing here executes a tool. A deny or escalate only changes what the page shows.
 ponytail: one process, one lock around the model; fine for one local user, not for a shared deployment.
@@ -70,6 +71,37 @@ def call(k):
                 **mm)
 
 
+def agent_runs():
+    from prefixgate import agent
+    f = RES / "agent_runs.json"
+    rec = json.loads(f.read_text()) if f.exists() else {"runs": []}
+    return dict(rec, tasks=[dict(id=i, intent=n, task=t) for i, n, t in agent.TASKS],
+                sources=["llama"] + (["meta"] if agent.meta_api_key() else []))
+
+
+def agent_stream(h, tid, src, alpha):
+    """Run one task live and push every gate update as an SSE event. Holds the model lock for the whole call."""
+    import time
+    from prefixgate import agent
+    task = next(t for i, _, t in agent.TASKS if i == tid)
+    h.send_response(200)
+    h.send_header("Content-Type", "text/event-stream")
+    h.send_header("Cache-Control", "no-cache")
+    h.end_headers()
+    emit = lambda d: (h.wfile.write(f"data: {json.dumps(d)}\n\n".encode()), h.wfile.flush())
+    with lock:
+        if "gate" not in state:
+            emit({"status": "loading Llama 3.2 3B and the gate on CPU"})
+            state["llama"], state["gate"] = agent.Llama(), agent.Gate(agent.config()[0])
+        gate = state["gate"]
+        gate.cfg = agent.config(alpha)[0]
+        t0 = time.time()
+        ev = lambda e: emit(dict(tokens=[gate.tok.decode([i]) for i in gate.ids], probs=gate.probs, commit=e["commit"],
+                                 ms=round((time.time() - t0) * 1000)))
+        r = agent.run_task(state["llama"] if src == "llama" else None, gate, task, on_event=ev)
+        emit(dict(r, done=True, ms=r["wall_ms"]))
+
+
 def live(text):
     """Score a pasted call token by token with the trained DM (one batch pass == the KV-cache stream, see latency())."""
     import torch
@@ -107,6 +139,12 @@ class H(BaseHTTPRequestHandler):
             return self.send(calls(q.get("alpha", "")))
         if u.path == "/api/call" and q.get("id") in state["recs"]:
             return self.send(call(q["id"]))
+        if u.path == "/api/agent":
+            return self.send(agent_runs())
+        runs = agent_runs() if u.path == "/api/agent/stream" else {}
+        if runs and q.get("src", "llama") in runs["sources"] and q.get("task") in {t["id"] for t in runs["tasks"]}:
+            alpha = tuple(float(x) for x in q.get("alpha", "0.05,0.1").split(","))
+            return agent_stream(self, q.get("task"), q.get("src", "llama"), alpha)
         self.send({"error": "not found"}, code=404)
 
     def do_POST(self):
