@@ -1,5 +1,6 @@
-# prefixgate dashboard as a free CPU Hugging Face Space (Docker SDK, 2 vCPU / 16 GB).
-# The Space repo holds only this file and README.md; the app is cloned from GitHub at REF.
+# The full dashboard in a container (paste-a-call live scoring on; live agent off). As a Hugging Face Space it needs
+# a Docker Space (HF PRO); the free Space is the static export, scripts/static_space.py.
+# Build context is space/ alone; the app is cloned from GitHub at REF.
 FROM python:3.11-slim
 RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates && rm -rf /var/lib/apt/lists/*
 RUN pip install --no-cache-dir torch==2.5.1 --index-url https://download.pytorch.org/whl/cpu \
