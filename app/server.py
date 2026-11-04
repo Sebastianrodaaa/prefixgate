@@ -4,7 +4,7 @@ the Llama agent live with its tool calls gated token by token (/api/agent/stream
 Nothing here executes a tool. A deny or escalate only changes what the page shows.
 ponytail: one process, one lock around the model; fine for one local user, not for a shared deployment.
 """
-import gzip, json, sys, threading
+import gzip, json, os, sys, threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
@@ -15,6 +15,8 @@ from prefixgate.data import build, rules  # noqa: E402
 
 RES = ROOT / "results"
 MAX_PASTE = 20000
+# off on small hosts (the HF Space): the agent tab then only replays the recorded runs
+AGENT_LIVE = os.environ.get("PREFIXGATE_AGENT_LIVE", "1") != "0"
 state, lock = {}, threading.Lock()
 
 
@@ -76,7 +78,7 @@ def agent_runs():
     f = RES / "agent_runs.json"
     rec = json.loads(f.read_text()) if f.exists() else {"runs": []}
     return dict(rec, tasks=[dict(id=i, intent=n, task=t) for i, n, t in agent.TASKS],
-                sources=["llama"] + (["meta"] if agent.meta_api_key() else []))
+                sources=(["llama"] + (["meta"] if agent.meta_api_key() else [])) if AGENT_LIVE else [])
 
 
 def agent_stream(h, tid, src, alpha):
@@ -164,4 +166,4 @@ if __name__ == "__main__":
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 8765
     boot()
     print(f"prefixgate dashboard on http://127.0.0.1:{port}", flush=True)
-    ThreadingHTTPServer(("127.0.0.1", port), H).serve_forever()
+    ThreadingHTTPServer((os.environ.get("HOST", "127.0.0.1"), port), H).serve_forever()

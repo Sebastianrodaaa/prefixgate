@@ -115,10 +115,11 @@ async function init(){
   $("tReplay").onclick=()=>setMode("replay");$("tLive").onclick=()=>setMode("live");$("tAgent").onclick=()=>setMode("agent");$("go").onclick=liveGo;
   AG=await j("/api/agent");$("src").innerHTML=AG.sources.map(s=>`<option value="${s}">${s=="llama"?"llama-3.2-3b · cpu":"meta model api"}</option>`).join("");
   $("agentWho").textContent=AG.runs.length?`${AG.runs.length} recorded runs`:"";$("runLive").onclick=()=>agentLive(agentSel);
+  if(!AG.sources.length){$("runLive").disabled=true;$("runLive").textContent="replay only";$("src").classList.add("hide")}
   $("tasks").onclick=e=>{const r=e.target.closest(".row");if(r)agentPick(r.dataset.id)};
   $("play").onclick=()=>timer?stop():playIt();$("scrub").oninput=e=>{pos=+e.target.value;draw()};
   addEventListener("resize",draw);await reload();
-  const q=new URLSearchParams(location.search);if(q.get("id"))pick(q.get("id"));else if(q.get("agent")==null){const f=calls.find(c=>c.attack&&c.stream&&c.stream[0]=="deny"&&c.T>120)||calls[0];pick(f.id)}
+  const q=new URLSearchParams(location.search);if(!location.search&&!AG.sources.length)q.set("agent","");if(q.get("id"))pick(q.get("id"));else if(q.get("agent")==null){const f=calls.find(c=>c.attack&&c.stream&&c.stream[0]=="deny"&&c.T>120)||calls[0];pick(f.id)}
   if(q.get("live")!=null)setMode("live");if(q.get("agent")!=null){setMode("agent");agentPick(q.get("task")||"rm-rf-home");if(q.get("run")!=null)agentLive(agentSel)}
   if(q.get("play")!=null)playIt()}
 async function reload(){calls=await j("/api/calls?alpha="+$("alpha").value);table();list();if(cur)draw();
@@ -172,7 +173,8 @@ const recRun=id=>AG.runs.find(r=>r.id==id);
 function agentList(){$("tasks").innerHTML=AG.tasks.map(t=>{const r=recRun(t.id),g=r?gate2(r.probs,cfg(),true).d:null;
   return `<div class="row" role="option" data-id="${t.id}" aria-selected="${agentSel==t.id}" title="${t.task.replace(/"/g,"&quot;")}"><span class="id">${t.id}</span><span class="g" title="intent ${t.intent}">${G[t.intent]}</span><span class="g" title="recorded gate ${g}">${g?G[g]:"·"}</span></div>`}).join("")}
 function agentPick(id){stop();agentSel=id;const t=AG.tasks.find(t=>t.id==id),r=recRun(id);
-  cur=Object.assign({live:true,agent:true,done:true,truth:{}},t,r||{tokens:[],probs:[],T:0});if(cur.T){setup()}else{$("toks").textContent="no recorded run · press run live";$("meta").textContent=id}agentList()}
+  cur=Object.assign({live:true,agent:true,done:true,truth:{}},t,r||{tokens:[],probs:[],T:0});if(cur.T){setup()}else{$("toks").textContent="no recorded run · press run live";$("meta").textContent=id}agentList();
+  $("agentStat").textContent=r?`replay of a real recorded run · ${AG.agent.split("@")[0]} · ${AG.cpu}`+(AG.sources.length?"":" · live agent off on this host"):""}
 function agentLive(id){if(!id||es)return;stop();const t=AG.tasks.find(t=>t.id==id);$("runLive").textContent="running";$("agentStat").textContent="starting";$("toks").textContent="";$("log").innerHTML="";
   es=new EventSource(`/api/agent/stream?task=${id}&src=${$("src").value}&alpha=${$("alpha").value}`);
   es.onmessage=e=>{const d=JSON.parse(e.data);if(d.status){$("agentStat").textContent=d.status;return}
