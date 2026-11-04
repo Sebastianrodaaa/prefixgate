@@ -13,7 +13,7 @@ With META_API_KEY set, `--meta` streams from the Meta Model API instead (OpenAI-
 import json, os, sys, time, urllib.request
 from prefixgate.data import ROOT
 
-LLAMA, LLAMA_REV = "unsloth/Llama-3.2-3B-Instruct", "006f5dcd1393c3add266de40994ba96225e9689d"  # 1B picked wrong tools, see REPORT
+LLAMA, LLAMA_REV = "unsloth/Llama-3.2-3B-Instruct", "006f5dcd1393c3add266de40994ba96225e9689d"  # 1B picked the wrong tools
 META_URL, META_MODEL = os.environ.get("META_API_BASE", "https://api.meta.ai/v1"), os.environ.get("META_MODEL", "muse-spark-1.3")
 ALPHA = (0.05, 0.1)  # the dashboard's default risk pair
 OUT = ROOT / "results" / "agent_runs.json"

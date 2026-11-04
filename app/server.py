@@ -2,7 +2,7 @@
 the Llama agent live with its tool calls gated token by token (/api/agent/stream, server-sent events).
 
 Nothing here executes a tool. A deny or escalate only changes what the page shows.
-Note: one process, one lock around the model; fine for one local user, not for a shared deployment.
+One process, one lock around the model; fine for one local user, not for a shared deployment.
 """
 import gzip, json, os, sys, threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
