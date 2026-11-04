@@ -64,7 +64,8 @@ th{color:var(--dim);font-weight:400}tr.me td{color:var(--fg);font-weight:700}td{
   </section>
   <section class="panel hide" style="flex:1" id="agentP">
     <div class="h"><span>agent tasks</span><span id="agentWho"></span></div>
-    <div class="ctrl" style="margin:0 0 8px"><button id="runLive">run live</button><select id="src" aria-label="agent source"></select><span class="note" id="agentStat"></span></div>
+    <div class="ctrl" style="margin:0 0 8px"><button id="runLive" style="white-space:nowrap">run live</button><select id="src" aria-label="agent source"></select></div>
+    <div class="note" id="agentStat" style="margin:0 0 8px;min-height:1.2em" aria-live="polite"></div>
     <div class="list" id="tasks" role="listbox" aria-label="agent tasks"></div>
     <div class="note" style="margin-top:6px">○ allow ■ deny ◇ escalate · left: task intent · right: recorded gate</div>
   </section>
@@ -117,7 +118,7 @@ async function init(){
   $("tasks").onclick=e=>{const r=e.target.closest(".row");if(r)agentPick(r.dataset.id)};
   $("play").onclick=()=>timer?stop():playIt();$("scrub").oninput=e=>{pos=+e.target.value;draw()};
   addEventListener("resize",draw);await reload();
-  const q=new URLSearchParams(location.search);if(q.get("id"))pick(q.get("id"));else{const f=calls.find(c=>c.attack&&c.stream&&c.stream[0]=="deny"&&c.T>120)||calls[0];pick(f.id)}
+  const q=new URLSearchParams(location.search);if(q.get("id"))pick(q.get("id"));else if(q.get("agent")==null){const f=calls.find(c=>c.attack&&c.stream&&c.stream[0]=="deny"&&c.T>120)||calls[0];pick(f.id)}
   if(q.get("live")!=null)setMode("live");if(q.get("agent")!=null){setMode("agent");agentPick(q.get("task")||"rm-rf-home");if(q.get("run")!=null)agentLive(agentSel)}
   if(q.get("play")!=null)playIt()}
 async function reload(){calls=await j("/api/calls?alpha="+$("alpha").value);table();list();if(cur)draw();
@@ -172,7 +173,7 @@ function agentList(){$("tasks").innerHTML=AG.tasks.map(t=>{const r=recRun(t.id),
   return `<div class="row" role="option" data-id="${t.id}" aria-selected="${agentSel==t.id}" title="${t.task.replace(/"/g,"&quot;")}"><span class="id">${t.id}</span><span class="g" title="intent ${t.intent}">${G[t.intent]}</span><span class="g" title="recorded gate ${g}">${g?G[g]:"·"}</span></div>`}).join("")}
 function agentPick(id){stop();agentSel=id;const t=AG.tasks.find(t=>t.id==id),r=recRun(id);
   cur=Object.assign({live:true,agent:true,done:true,truth:{}},t,r||{tokens:[],probs:[],T:0});if(cur.T){setup()}else{$("toks").textContent="no recorded run · press run live";$("meta").textContent=id}agentList()}
-function agentLive(id){if(!id||es)return;stop();const t=AG.tasks.find(t=>t.id==id);$("runLive").textContent="running";$("agentStat").textContent="";
+function agentLive(id){if(!id||es)return;stop();const t=AG.tasks.find(t=>t.id==id);$("runLive").textContent="running";$("agentStat").textContent="starting";$("toks").textContent="";$("log").innerHTML="";
   es=new EventSource(`/api/agent/stream?task=${id}&src=${$("src").value}&alpha=${$("alpha").value}`);
   es.onmessage=e=>{const d=JSON.parse(e.data);if(d.status){$("agentStat").textContent=d.status;return}
     cur=Object.assign({live:true,agent:true,truth:{},done:false},t,d,{T:d.tokens.length});$("agentStat").textContent=`${((d.ms||0)/1000).toFixed(1)} s · ${cur.T} tok`;
