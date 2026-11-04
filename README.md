@@ -3,8 +3,11 @@
 prefixgate watches a coding agent's tool call while it is still being written and says allow, deny or escalate as
 soon as it is sure enough. "Sure enough" is set by Learn-then-Test, so false-allow and false-deny stay under the
 bounds you pick. It is a CPU-only experiment on Qwen2.5-0.5B-Instruct and the public Policy Gates data, with a local
-dashboard that replays the real run. For the Meta hackathon it also gates a live agent: Llama 3.2 3B writes tool
-calls on the same CPU and the gate decides on them token by token, before anything could run.
+dashboard that replays the real run. It also gates a live agent: Llama 3.2 3B writes tool calls on the same CPU and
+the gate decides on them token by token, before anything could run.
+
+**Try it:** [huggingface.co/spaces/sroda/prefixgate](https://huggingface.co/spaces/sroda/prefixgate) replays the
+recorded runs in the browser; `make demo` runs everything locally.
 
 ![python](https://img.shields.io/badge/python-3.10-black?style=flat-square) ![cpu only](https://img.shields.io/badge/cpu-only-black?style=flat-square) ![model](https://img.shields.io/badge/qwen2.5-0.5b-black?style=flat-square) ![agent](https://img.shields.io/badge/llama_3.2-3b-black?style=flat-square) ![license](https://img.shields.io/badge/license-MIT-black?style=flat-square) ![result](https://img.shields.io/badge/hypothesis-holds%2C%20degenerate-white?style=flat-square)
 
@@ -136,7 +139,7 @@ off); as a Space it needs a Docker Space, which on HF needs PRO.
 
 ```sh
 python3 scripts/static_space.py                                  # build/space/, serve it with any static server
-HF_TOKEN=hf_... python3 scripts/static_space.py --push sroda/prefixgate
+HF_TOKEN=... python3 scripts/static_space.py --push <user>/<space>
 docker build -t prefixgate-space space && docker run --rm -p 7860:7860 prefixgate-space   # http://127.0.0.1:7860
 ```
 
@@ -147,7 +150,7 @@ for now, the decision is "ask someone".
 
 ## Inspirations
 
-Decision Models as Policy Gates, Learn then Test, Llama 3.2, Ranked but Not Stopped, Local or Escalate, and athanor's README.
+Decision Models as Policy Gates, Learn then Test, Llama 3.2, Ranked but Not Stopped and Local or Escalate.
 See [INSPIRATIONS.md](INSPIRATIONS.md).
 
 ## License

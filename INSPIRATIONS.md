@@ -14,4 +14,3 @@ prefixgate is a small experiment that stands on these.
   logistic probe is the one-frame version of that idea, run as an ablation.
 - **Flide** ([arXiv:2610.42148](https://arxiv.org/abs/2610.42148)) on cheap decision-model inference, and
   **LeanGuard** ([arXiv:2611.02332](https://arxiv.org/abs/2611.02332)), the hard check an escalation could hand to.
-- **athanor** ([ghgoodreau/athanor](https://github.com/ghgoodreau/athanor)) for the shape of the README.
