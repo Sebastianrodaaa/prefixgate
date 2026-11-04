@@ -126,6 +126,17 @@ It downloads the Policy Gates release into `data/` (sha-256 checked) and the Qwe
 `data/`, `~/.cache/huggingface/hub/models--Qwen--Qwen2.5-0.5B-Instruct` and
 `~/.cache/huggingface/hub/models--unsloth--Llama-3.2-3B-Instruct`.
 
+### Hugging Face Space
+
+[`space/`](space) deploys the dashboard as a free CPU Space (Docker SDK, port 7860). It opens on the agent tab and
+replays the 24 recorded Llama 3.2 3B runs, labelled as replays; the live agent is off there (too slow on 2 vCPU, see
+[space/README.md](space/README.md)), the paste-a-call live tab stays on. Test it locally, then push the two files:
+
+```sh
+docker build -t prefixgate-space space && docker run --rm -p 7860:7860 prefixgate-space   # http://127.0.0.1:7860
+HF_TOKEN=hf_... python3 -c "from huggingface_hub import create_repo, upload_folder as up; r = create_repo('Sebastianrodaaa/prefixgate', repo_type='space', space_sdk='docker', exist_ok=True).repo_id; up(repo_id=r, repo_type='space', folder_path='space')"
+```
+
 ## The Name
 
 A gate on a prefix. The tool call is still arriving and the decision is already at the door. Most of the time,
