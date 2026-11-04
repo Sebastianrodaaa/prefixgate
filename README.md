@@ -128,13 +128,17 @@ It downloads the Policy Gates release into `data/` (sha-256 checked) and the Qwe
 
 ### Hugging Face Space
 
-[`space/`](space) deploys the dashboard as a free CPU Space (Docker SDK, port 7860). It opens on the agent tab and
-replays the 24 recorded Llama 3.2 3B runs, labelled as replays; the live agent is off there (too slow on 2 vCPU, see
-[space/README.md](space/README.md)), the paste-a-call live tab stays on. Test it locally, then push the two files:
+[huggingface.co/spaces/sroda/prefixgate](https://huggingface.co/spaces/sroda/prefixgate) is a free static Space:
+`scripts/static_space.py` writes the server's answers for the recorded runs as files next to the dashboard. It opens
+on the agent tab and replays the 24 recorded Llama 3.2 3B runs, labelled as replays, plus the replay tab; no model
+runs there, so both live modes are off ([space/README.md](space/README.md) has the measured 2-CPU timings).
+[`space/Dockerfile`](space/Dockerfile) is the full dashboard in a container (paste-a-call live scoring on, live agent
+off); as a Space it needs a Docker Space, which on HF needs PRO.
 
 ```sh
+python3 scripts/static_space.py                                  # build/space/, serve it with any static server
+HF_TOKEN=hf_... python3 scripts/static_space.py --push sroda/prefixgate
 docker build -t prefixgate-space space && docker run --rm -p 7860:7860 prefixgate-space   # http://127.0.0.1:7860
-HF_TOKEN=hf_... python3 -c "from huggingface_hub import create_repo, upload_folder as up; r = create_repo('Sebastianrodaaa/prefixgate', repo_type='space', space_sdk='docker', exist_ok=True).repo_id; up(repo_id=r, repo_type='space', folder_path='space')"
 ```
 
 ## The Name
